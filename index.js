@@ -1,73 +1,56 @@
 const express = require("express");
-const {
-  default: makeWASocket,
-  useMultiFileAuthState,
-  fetchLatestBaileysVersion,
-  DisconnectReason
-} = require("@whiskeysockets/baileys");
-const pino = require("pino");
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require("@whiskeysockets/baileys");
+const P = require("pino");
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 
-// Simple web route (important for Render)
 app.get("/", (req, res) => {
-  res.send("C-Jax Bot is running 👾");
+    res.send("C-Jax Bot Running 👾🔥");
 });
 
 app.listen(PORT, () => {
-  console.log("Web server running on port " + PORT);
+    console.log(`Web server running on port ${PORT}`);
 });
 
 async function startBot() {
-  const { state, saveCreds } = await useMultiFileAuthState("session");
-  const { version } = await fetchLatestBaileysVersion();
+    const { state, saveCreds } = await useMultiFileAuthState("auth");
+    const { version } = await fetchLatestBaileysVersion();
 
-  const sock = makeWASocket({
-    version,
-    logger: pino({ level: "silent" }),
-    auth: state,
-    browser: ["C-Jax", "Chrome", "1.0.0"]
-  });
+    const sock = makeWASocket({
+        version,
+        logger: P({ level: "silent" }),
+        auth: state,
+        browser: ["C-Jax", "Chrome", "1.0.0"]
+    });
 
-  sock.ev.on("creds.update", saveCreds);
+    sock.ev.on("creds.update", saveCreds);
 
-  let pairingRequested = false;
+    sock.ev.on("connection.update", async (update) => {
+        const { connection, lastDisconnect } = update;
 
-  sock.ev.on("connection.update", async (update) => {
-    const { connection, lastDisconnect } = update;
+        if (connection === "close") {
+            const shouldReconnect =
+                lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
 
-    if (connection === "connecting") {
-      console.log("Connecting to WhatsApp...");
-    }
+            console.log("Connection closed. Reconnecting...");
 
-    if (connection === "open") {
-      console.log("✅ C-Jax Bot Connected Successfully!");
-    }
+            if (shouldReconnect) {
+                startBot();
+            }
+        } else if (connection === "open") {
+            console.log("🔥 C-Jax Bot Connected Successfully!");
+        }
+    });
 
-    if (!sock.authState.creds.registered && !pairingRequested) {
-      pairingRequested = true;
+    // 👇 ENTER YOUR NUMBER HERE (country code, no +)
+    const phoneNumber = "2347076849343";
 
-      const phoneNumber = "2347076849343"; // PUT YOUR NUMBER HERE
-
-      try {
+    if (!state.creds.registered) {
+        console.log("Requesting pairing code...");
         const code = await sock.requestPairingCode(phoneNumber);
-        console.log("🔥 Pairing Code:", code);
-      } catch (err) {
-        console.log("Pairing failed:", err.message);
-      }
+        console.log("Enter this code in WhatsApp:", code);
     }
-
-    if (connection === "close") {
-      const shouldReconnect =
-        lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-
-      if (shouldReconnect) {
-        console.log("Reconnecting...");
-        startBot();
-      }
-    }
-  });
 }
 
 startBot();
